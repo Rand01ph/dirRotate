@@ -3,10 +3,17 @@ package main
 import (
     "fmt"
     "github.com/jasonlvhit/gocron"
+    "gopkg.in/alecthomas/kingpin.v2"
     "io/ioutil"
     "log"
+    "os"
     "path"
     "time"
+)
+
+var (
+    rotateRoot = kingpin.Flag("rotate-root", "切割根目录").Envar("ROTATE_ROOT").Default("/opt/log_bak").String()
+    keepMonth  = kingpin.Flag("keep-month", "保留最近几个月").Envar("KEEP_MONTH").Default("6").Int()
 )
 
 func dirRotate(dir string, months int) {
@@ -14,6 +21,7 @@ func dirRotate(dir string, months int) {
     fmt.Println("now:", now)
     then := now.AddDate(0, -months, 0)
     fmt.Println("then:", then)
+    log.Printf("begin to monitoring dir %s", dir)
     removeYearDir(dir, then)
 }
 
@@ -34,7 +42,9 @@ func removeYearDir(dir string, then time.Time) {
             // 年份<
             if yearTime.Year() < then.Year() {
                 log.Printf("remove year dir %s", yearFile.Name())
-                // TODO remove
+                if err := os.RemoveAll(path.Join(dir, yearFile.Name())); err != nil {
+                    log.Printf("remove year dir %s error", yearFile.Name())
+                }
             } else if yearTime.Year() == then.Year() {
                 // 对比月份
                 go removeMonthDir(path.Join(dir, yearFile.Name()), then)
@@ -61,7 +71,9 @@ func removeMonthDir(dir string, then time.Time) {
             // 月份<
             if monthTime.Month() < then.Month() {
                 log.Printf("remove month dir %s", monthFile.Name())
-                // TODO remove
+                if err := os.RemoveAll(path.Join(dir, monthFile.Name())); err != nil {
+                    log.Printf("remove month dir %s error", monthFile.Name())
+                }
             } else if monthTime.Month() == then.Month() {
                 // 对比月份
                 go removeDayDir(path.Join(dir, monthFile.Name()), then)
@@ -88,13 +100,17 @@ func removeDayDir(dir string, then time.Time) {
             // 日期<
             if dayTime.Day() < then.Day() {
                 log.Printf("remove day dir %s", dayFile.Name())
-                // TODO remove
+                if err := os.RemoveAll(path.Join(dir, dayFile.Name())); err != nil {
+                    log.Printf("remove day dir %s error", dayFile.Name())
+                }
             }
         }
     }
 }
 
 func main() {
-    gocron.Every(10).Seconds().Do(dirRotate, "/tmp/log_bak", 1)
+    kingpin.Parse()
+    dirRotate(*rotateRoot, *keepMonth)
+    gocron.Every(1).Day().Do(dirRotate, *rotateRoot, *keepMonth)
     <-gocron.Start()
 }
